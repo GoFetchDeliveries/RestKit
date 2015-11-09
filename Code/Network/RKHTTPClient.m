@@ -180,7 +180,9 @@ defaultHeaders = _defaultHeaders;
     
     NSURLComponents *components = [NSURLComponents componentsWithURL:self.baseURL resolvingAgainstBaseURL:NO];
     components.path = [components.path stringByAppendingString:path];
-    
+    if (components.path == nil) {
+        return [NSURL URLWithString:[self.baseURL.absoluteString stringByAppendingString:path]];
+    }
     return [components URL];
 }
 
@@ -200,10 +202,12 @@ defaultHeaders = _defaultHeaders;
         }
         
         id responseObject;
-        if(self.responseSerializerClass){
-            responseObject = [self.responseSerializerClass objectFromData:data error:&error];
-        }else if (response.MIMEType) {
-            responseObject = [RKMIMETypeSerialization objectFromData:data MIMEType:response.MIMEType error:&error];
+        if (data.length > 0) {
+            if(self.responseSerializerClass){
+                responseObject = [self.responseSerializerClass objectFromData:data error:&error];
+            }else if (response.MIMEType) {
+                responseObject = [RKMIMETypeSerialization objectFromData:data MIMEType:response.MIMEType error:&error];
+            }
         }
         
         completionHandler(responseObject, data, response, error);
