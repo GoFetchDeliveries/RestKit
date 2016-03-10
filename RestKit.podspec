@@ -18,7 +18,7 @@ Pod::Spec.new do |s|
 
   # Add Core Data to the PCH if the Core Data subspec is imported. This enables conditional compilation to kick in.
   s.prefix_header_contents = <<-EOS
-#if __has_include("RKCoreData.h")
+#if __has_include(<RestKit/CoreData.h>)
     #import <CoreData/CoreData.h>
 #endif
 EOS
@@ -35,14 +35,14 @@ EOS
   end
 
   s.subspec 'ObjectMapping' do |os|
-    os.source_files   = 'Code/ObjectMapping.h', 'Code/ObjectMapping'
+    os.source_files   = 'Code/ObjectMapping.h', 'Code/ObjectMapping/**/*'
     os.dependency       'RestKit/Support'
     os.dependency       'RKValueTransformers', '~> 1.1.0'
     os.dependency       'ISO8601DateFormatterValueTransformer', '~> 0.6.1'
   end
 
   s.subspec 'Network' do |ns|
-    ns.source_files   = 'Code/Network.h', 'Code/Network'
+    ns.source_files   = 'Code/Network.h', 'Code/Network/**/*'
     ns.ios.frameworks = 'CFNetwork', 'Security', 'MobileCoreServices', 'SystemConfiguration'
     ns.osx.frameworks = 'CoreServices', 'Security', 'SystemConfiguration'
     ns.dependency       'SOCKit'
@@ -68,7 +68,7 @@ EOS
   end
 
   s.subspec 'CoreData' do |cdos|
-    cdos.source_files = 'Code/CoreData.h', 'Code/CoreData'
+    cdos.source_files = 'Code/CoreData.h', 'Code/CoreData/**/*'
     cdos.frameworks   = 'CoreData'
     cdos.dependency 'RestKit/ObjectMapping'
   end
@@ -100,7 +100,6 @@ EOS
 
   s.subspec 'Support' do |ss|
     ss.source_files   = 'Code/RestKit.h', 'Code/Support.h', 'Code/Support'
-    ss.preserve_paths = 'Vendor/LibComponentLogging/Core' # Preserved because they are symlinked
     ss.dependency 'TransitionKit', '~> 2.2'
   end
 
