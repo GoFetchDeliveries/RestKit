@@ -7,7 +7,6 @@
 //
 
 #import <RestKit/RestKit.h>
-#import <RestKit/RKHTTPClient.h>
 #import "RKTwitterAppDelegate.h"
 #import "RKTwitterViewController.h"
 #import "RKTweet.h"
@@ -26,11 +25,11 @@
     RKLogConfigureByName("RestKit/ObjectMapping", RKLogLevelTrace);
 
     //let AFNetworking manage the activity indicator
-//    [AFNetworkActivityIndicatorManager sharedManager].enabled = YES;
+    [AFRKNetworkActivityIndicatorManager sharedManager].enabled = YES;
   
     // Initialize HTTPClient
-    NSURL *baseURL = [NSURL URLWithString:@"https://api.twitter.com/1.1"];
-    RKHTTPClient* client = [[RKHTTPClient alloc] initWithBaseURL:baseURL];
+    NSURL *baseURL = [NSURL URLWithString:@"https://twitter.com"];
+    AFRKHTTPClient* client = [[AFRKHTTPClient alloc] initWithBaseURL:baseURL];
     
     // HACK: Set User-Agent to Mac OS X so that Twitter will let us access the Timeline
     [client setDefaultHeader:@"User-Agent" value:[NSString stringWithFormat:@"%@/%@ (Mac OS X %@)", [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString *)kCFBundleExecutableKey] ?: [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString *)kCFBundleIdentifierKey], [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleShortVersionString"] ?: [[[NSBundle mainBundle] infoDictionary] objectForKey:(NSString *)kCFBundleVersionKey], [[NSProcessInfo processInfo] operatingSystemVersionString]]];
@@ -73,7 +72,7 @@
     // Register our mappings with the provider using a response descriptor
     RKResponseDescriptor *responseDescriptor = [RKResponseDescriptor responseDescriptorWithMapping:statusMapping
                                                                                             method:RKRequestMethodGET
-                                                                                       pathPattern:@"/statuses/user_timeline"
+                                                                                       pathPattern:@"/status/user_timeline/:username"
                                                                                            keyPath:nil
                                                                                        statusCodes:[NSIndexSet indexSetWithIndex:200]];
     [objectManager addResponseDescriptor:responseDescriptor];

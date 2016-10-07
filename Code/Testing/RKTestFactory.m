@@ -18,20 +18,17 @@
 //  limitations under the License.
 //
 
-#import "RKHTTPClient.h"
+#import "AFRKHTTPClient.h"
 #import "RKTestFactory.h"
 #import "RKLog.h"
 #import "RKObjectManager.h"
 #import "RKPathUtilities.h"
 #import "RKMIMETypeSerialization.h"
 #import "RKObjectRequestOperation.h"
-#import "RKHTTPClient.h"
 
-#ifdef _COREDATADEFINES_H
-#if __has_include("RKCoreData.h")
+#if __has_include("CoreData.h")
 #define RKCoreDataIncluded
 #import "RKManagedObjectStore.h"
-#endif
 #endif
 
 // Expose MIME Type singleton and initialization routine
@@ -114,9 +111,9 @@
 - (void)defineDefaultFactories
 {
     [self defineFactory:RKTestFactoryDefaultNamesClient withBlock:^id {
-        __block RKHTTPClient *client;
+        __block AFRKHTTPClient *client;
         RKLogSilenceComponentWhileExecutingBlock(RKlcl_cRestKitSupport, ^{
-            client = [RKHTTPClient clientWithBaseURL:self.baseURL];
+            client = [AFRKHTTPClient clientWithBaseURL:self.baseURL];
         });
 
         return client;
@@ -258,9 +255,6 @@
         [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
     }
 
-    // Clear the NSURLCache
-    [[NSURLCache sharedURLCache] removeAllCachedResponses];
-
     if ([RKTestFactory sharedFactory].setUpBlock) [RKTestFactory sharedFactory].setUpBlock();
 }
 
@@ -270,7 +264,6 @@
 
     // Cancel any network operations and clear the cache
     [[RKObjectManager sharedManager].operationQueue cancelAllOperations];
-    [[NSURLCache sharedURLCache] removeAllCachedResponses];
 
     // Cancel any object mapping in the response mapping queue
     [[RKObjectRequestOperation responseMappingQueue] cancelAllOperations];
@@ -278,7 +271,7 @@
 #ifdef RKCoreDataIncluded
     // Ensure the existing defaultStore is shut down
     [[NSNotificationCenter defaultCenter] removeObserver:[RKManagedObjectStore defaultStore]];
-    
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundeclared-selector"
     if ([[RKManagedObjectStore defaultStore] respondsToSelector:@selector(stopIndexingPersistentStoreManagedObjectContext)]) {

@@ -24,14 +24,7 @@
 #import "RKHTTPUtilities.h"
 #import "RKMIMETypes.h"
 
-typedef signed short RKOperationState;
-
 extern NSString * const RKErrorDomain;
-
-static NSString * const kRKNetworkingLockName = @"com.restkit.networking.operation.lock";
-
-NSString *const RKHTTPRequestOperationDidStartNotification = @"RKHTTPRequestOperationDidStartNotification";
-NSString *const RKHTTPRequestOperationDidFinishNotification = @"RKHTTPRequestOperationDidFinishNotification";
 
 // Set Logging Component
 #undef RKLogComponent
@@ -39,204 +32,101 @@ NSString *const RKHTTPRequestOperationDidFinishNotification = @"RKHTTPRequestOpe
 
 NSString *RKStringFromIndexSet(NSIndexSet *indexSet); // Defined in RKResponseDescriptor.m
 
-const NSMutableIndexSet *acceptableStatusCodes;
-const NSMutableSet *acceptableContentTypes;
+static BOOL RKResponseRequiresContentTypeMatch(NSHTTPURLResponse *response, NSURLRequest *request)
+{
+    if (RKRequestMethodFromString(request.HTTPMethod) == RKRequestMethodHEAD) return NO;
+    if ([RKStatusCodesOfResponsesWithOptionalBodies() containsIndex:response.statusCode]) return NO;
+    return YES;
+}
+
+@interface AFRKURLConnectionOperation () <NSURLConnectionDataDelegate>
+@property (readwrite, nonatomic, strong) NSRecursiveLock *lock;
+@end
 
 @interface RKHTTPRequestOperation ()
-
 @property (readwrite, nonatomic, strong) NSError *rkHTTPError;
-@property (readwrite, nonatomic, strong) id<RKHTTPClient> HTTPClient;
-@property (readwrite, nonatomic, strong) NSURLRequest *request;
-@property (readwrite, nonatomic, strong) NSHTTPURLResponse *response;
-@property (readwrite, nonatomic, strong) NSError *error;
-@property (readwrite, nonatomic, strong) NSData *responseData;
-@property (readwrite, nonatomic, strong) NSString *responseString;
-@property (readwrite, nonatomic, strong) id responseObject;
-@property (readwrite, nonatomic, strong) NSError *responseSerializationError;
-@property (readwrite, nonatomic, strong) NSRecursiveLock *lock;
-@property (readwrite, nonatomic, strong) NSURLSessionTask *requestTask;
-
 @end
 
 @implementation RKHTTPRequestOperation
-
-- (instancetype)initWithRequest:(NSURLRequest *)urlRequest HTTPClient:(id<RKHTTPClient>)HTTPClient{
-    
-    NSParameterAssert(urlRequest);
-    NSParameterAssert(HTTPClient);
-    
-    self = [super init];
-    if (!self) {
-        return nil;
-    }
-    
-    self.isExecuting = NO;
-    self.isFinished = NO;
-    self.lock = [[NSRecursiveLock alloc] init];
-    self.lock.name = kRKNetworkingLockName;
-    self.request = urlRequest;
-    self.HTTPClient = HTTPClient;
-    
-    return self;
-}
 
 + (BOOL)canProcessRequest:(NSURLRequest *)request
 {
     return YES;
 }
 
-#pragma mark - NSOperation
-
-- (BOOL)isReady {
-    
-    return  ![self isExecuting] &&
-            ![self isFinished] &&
-            ![self isCancelled] &&
-            [super isReady];
+// Disable class level Content/Status Code inspection in our superclass
++ (NSSet *)acceptableContentTypes
+{
+    return nil;
 }
 
-- (BOOL)isPaused {
-    return self.requestTask && self.requestTask.state == NSURLSessionTaskStateSuspended;
++ (NSIndexSet *)acceptableStatusCodes
+{
+    return nil;
 }
 
-- (BOOL)isExecuting {
-    return self.requestTask && self.requestTask.state == NSURLSessionTaskStateRunning;
+- (BOOL)hasAcceptableStatusCode
+{
+    if (! self.response) return NO;
+    NSUInteger statusCode = ([self.response isKindOfClass:[NSHTTPURLResponse class]]) ? (NSUInteger)[self.response statusCode] : 200;
+    return self.acceptableStatusCodes ? [self.acceptableStatusCodes containsIndex:statusCode] : [super hasAcceptableStatusCode];
 }
 
-- (BOOL)isFinished {
-    return self.requestTask && self.requestTask.state == NSURLSessionTaskStateCompleted;
+- (BOOL)hasAcceptableContentType
+{
+    if (! self.response) return NO;
+    if (!RKResponseRequiresContentTypeMatch(self.response, self.request)) return YES;
+    NSString *contentType = [self.response MIMEType] ?: @"application/octet-stream";
+    return self.acceptableContentTypes ? RKMIMETypeInSet(contentType, self.acceptableContentTypes) : [super hasAcceptableContentType];
 }
 
-- (BOOL)isCancelled {
-    return [super isCancelled] || [self isFinished];
-}
-
-- (BOOL)isConcurrent {
-    return YES;
-}
-
-- (void)setIsExecuting:(BOOL)isExecuting {
-    [self willChangeValueForKey:@"isExecuting"];
-    [self didChangeValueForKey:@"isExecuting"];
-}
-
-- (void)setIsFinished:(BOOL)isFinished {
-    [self willChangeValueForKey:@"isFinished"];
-    [self didChangeValueForKey:@"isFinished"];
-}
-
-- (void)setIsCancelled:(BOOL)isFinished {
-    [self willChangeValueForKey:@"isCancelled"];
-    [self didChangeValueForKey:@"isCancelled"];
-}
-
-- (void)start {
-    
+// NOTE: We reimplement this because the AFNetworking implementation keeps Acceptable Status Code/MIME Type at class level
+- (NSError *)error
+{
     [self.lock lock];
-    if ([self isReady]) {
-        
-        // Notify observers/queue
-        self.isExecuting = YES;
 
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [[NSNotificationCenter defaultCenter] postNotificationName:RKHTTPRequestOperationDidStartNotification object:self];
-        });
-        
-        self.requestTask = [self.HTTPClient performRequest:self.request completionHandler:^(id responseObject, NSData *responseData, NSURLResponse *response, NSError *error) {
-            
-            self.responseData = responseData;
-            self.responseString = [[NSString alloc] initWithData:responseData encoding:NSUTF8StringEncoding];
-            self.responseObject = responseObject;            
-            self.response = (NSHTTPURLResponse*) response;
-            self.error = error;
-            [self finish];
-        }];
-    }
-    [self.lock unlock];
-}
+    if (!self.rkHTTPError && self.response) {
+        if (![self hasAcceptableStatusCode] || ![self hasAcceptableContentType]) {
+            NSMutableDictionary *userInfo = [NSMutableDictionary dictionary];
+            [userInfo setValue:self.responseString forKey:NSLocalizedRecoverySuggestionErrorKey];
+            [userInfo setValue:[self.request URL] forKey:NSURLErrorFailingURLErrorKey];
+            [userInfo setValue:self.request forKey:AFRKNetworkingOperationFailingURLRequestErrorKey];
+            [userInfo setValue:self.response forKey:AFRKNetworkingOperationFailingURLResponseErrorKey];
 
-- (void)pause {
-    
-    if ([self isPaused] || [self isFinished] || [self isCancelled]) {
-        return;
-    }
-    
-    [self.lock lock];
-    
-    [self.requestTask suspend];
-    
-    self.isExecuting = NO;
-    
-    [self.lock unlock];
-}
-
-
-- (void)resume {
-    
-    if (![self isPaused]) {
-        return;
-    }
-    
-    [self.lock lock];
-    
-    [self.requestTask resume];
-    
-    self.isExecuting = YES;
-
-    [self.lock unlock];
-}
-
-
-- (void)finish {
-
-    // Notify observers/queue
-    self.isExecuting = NO;
-    self.isFinished = YES;
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[NSNotificationCenter defaultCenter] postNotificationName:RKHTTPRequestOperationDidFinishNotification object:self];
-    });
-}
-
-- (void)cancel {
-    
-    [self.lock lock];
-    if (![self isFinished] && ![self isCancelled]) {
-        
-        [self.requestTask cancel];
-        
-        self.isCancelled = YES;
-        [super cancel];
-    }
-    [self.lock unlock];
-}
-
-- (void)setCompletionBlockWithSuccess:(void (^)(RKHTTPRequestOperation *operation, id responseObject))success
-                              failure:(void (^)(RKHTTPRequestOperation *operation, NSError *error))failure{
-    
-    __weak typeof(self) weakSelf = self;
-    self.completionBlock = ^{
-        if (weakSelf.error) {
-            if (failure) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    failure(weakSelf, weakSelf.error);
-                });
-            }
-        } else {
-            if (success) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    success(weakSelf, weakSelf.responseData);
-                });
+            if (![self hasAcceptableStatusCode]) {
+                NSUInteger statusCode = ([self.response isKindOfClass:[NSHTTPURLResponse class]]) ? (NSUInteger)[self.response statusCode] : 200;
+                [userInfo setValue:[NSString stringWithFormat:NSLocalizedString(@"Expected status code in (%@), got %d", nil), RKStringFromIndexSet(self.acceptableStatusCodes ?: [NSMutableIndexSet indexSet]), statusCode] forKey:NSLocalizedDescriptionKey];
+                self.rkHTTPError = [[NSError alloc] initWithDomain:RKErrorDomain code:NSURLErrorBadServerResponse userInfo:userInfo];
+            } else if (![self hasAcceptableContentType] && self.response.statusCode != 204) {
+                // NOTE: 204 responses come back as text/plain, which we don't want
+                [userInfo setValue:[NSString stringWithFormat:NSLocalizedString(@"Expected content type %@, got %@", nil), self.acceptableContentTypes, [self.response MIMEType]] forKey:NSLocalizedDescriptionKey];
+                self.rkHTTPError = [[NSError alloc] initWithDomain:RKErrorDomain code:NSURLErrorCannotDecodeContentData userInfo:userInfo];
             }
         }
-    };
+    }
+
+    NSError *error = self.rkHTTPError ?: [super error];
+    [self.lock unlock];
+    return error;
 }
 
+#pragma mark - NSURLConnectionDelegate methods
 
-#pragma mark - NSCopying
-
-- (id)copyWithZone:(NSZone *)zone {
-    return [(RKHTTPRequestOperation *)[[self class] allocWithZone:zone] initWithRequest:self.request HTTPClient:self.HTTPClient];
+- (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)redirectResponse
+{
+    if ([AFRKHTTPRequestOperation instancesRespondToSelector:@selector(connection:willSendRequest:redirectResponse:)]) {
+        NSURLRequest *returnValue = [super connection:connection willSendRequest:request redirectResponse:redirectResponse];
+        if (returnValue) {
+            if (redirectResponse) RKLogDebug(@"Following redirect request: %@", returnValue);
+            return returnValue;
+        } else {
+            RKLogDebug(@"Not following redirect to %@", request);
+            return nil;
+        }
+    } else {
+        if (redirectResponse) RKLogDebug(@"Following redirect request: %@", request);
+        return request;
+    }
 }
 
 @end
