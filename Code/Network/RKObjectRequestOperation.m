@@ -192,14 +192,14 @@ NSString *const RKObjectRequestOperationMappingDidFinishUserInfoKey = @"mappingF
 
 static void RKIncrementNetworkActivityIndicator()
 {
-    #if __IPHONE_OS_VERSION_MIN_REQUIRED
+    #if __IPHONE_OS_VERSION_MIN_REQUIRED && !defined(RK_APP_EXTENSION)
         [[AFRKNetworkActivityIndicatorManager sharedManager] incrementActivityCount];
     #endif
 }
 
 static void RKDecrementNetworkAcitivityIndicator()
 {
-    #if __IPHONE_OS_VERSION_MIN_REQUIRED
+    #if __IPHONE_OS_VERSION_MIN_REQUIRED && !defined(RK_APP_EXTENSION)
         [[AFRKNetworkActivityIndicatorManager sharedManager] decrementActivityCount];
     #endif
 }
