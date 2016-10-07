@@ -91,6 +91,7 @@ static NSPredicate *RKPredicateWithSubstitutionVariablesForAttributeValues(NSDic
     if (self) {
         self.predicateCache = [NSMutableDictionary dictionary];
         self.cacheQueue = dispatch_queue_create("org.restkit.core-data.fetch-request-cache-queue", DISPATCH_QUEUE_CONCURRENT);
+        self.excludeSubentities = NO;
     }
     return self;
 }
@@ -131,6 +132,7 @@ static NSPredicate *RKPredicateWithSubstitutionVariablesForAttributeValues(NSDic
     
     NSFetchRequest *fetchRequest = [NSFetchRequest fetchRequestWithEntityName:[entity name]];
     fetchRequest.predicate = [substitutionPredicate predicateWithSubstitutionVariables:substitutionVariables];
+    fetchRequest.includesSubentities = !self.excludeSubentities;
     __block NSError *error = nil;
     __block NSArray *objects = nil;
     [managedObjectContext performBlockAndWait:^{
