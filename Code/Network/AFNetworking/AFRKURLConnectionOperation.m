@@ -40,12 +40,6 @@ typedef enum {
 
 typedef signed short AFRKOperationState;
 
-#if defined(__IPHONE_OS_VERSION_MIN_REQUIRED)
-typedef UIBackgroundTaskIdentifier AFRKBackgroundTaskIdentifier;
-#else
-typedef id AFRKBackgroundTaskIdentifier;
-#endif
-
 static NSString * const kAFRKNetworkingLockName = @"com.restkit.alamofire.networking.operation.lock";
 
 NSString * const AFRKNetworkingErrorDomain = @"AFRKNetworkingErrorDomain";
@@ -59,6 +53,7 @@ typedef void (^AFRKURLConnectionOperationProgressBlock)(NSUInteger bytes, long l
 typedef void (^AFRKURLConnectionOperationAuthenticationChallengeBlock)(NSURLConnection *connection, NSURLAuthenticationChallenge *challenge);
 typedef NSCachedURLResponse * (^AFRKURLConnectionOperationCacheResponseBlock)(NSURLConnection *connection, NSCachedURLResponse *cachedResponse);
 typedef NSURLRequest * (^AFRKURLConnectionOperationRedirectResponseBlock)(NSURLConnection *connection, NSURLRequest *request, NSURLResponse *redirectResponse);
+typedef void (^AFURLConnectionOperationBackgroundTaskCleanupBlock)();
 
 static inline NSString * AFRKKeyPathFromOperationState(AFRKOperationState state) {
     switch (state) {
@@ -142,6 +137,7 @@ static BOOL AFRKSecKeyIsEqualToKey(SecKeyRef key1, SecKeyRef key2) {
 @property (readwrite, nonatomic, assign) NSStringEncoding responseStringEncoding;
 @property (readwrite, nonatomic, assign) long long totalBytesRead;
 @property (readwrite, nonatomic, assign) AFRKBackgroundTaskIdentifier backgroundTaskIdentifier;
+@property (readwrite, nonatomic, copy) AFURLConnectionOperationBackgroundTaskCleanupBlock backgroundTaskCleanup;
 @property (readwrite, nonatomic, copy) AFRKURLConnectionOperationProgressBlock uploadProgress;
 @property (readwrite, nonatomic, copy) AFRKURLConnectionOperationProgressBlock downloadProgress;
 @property (readwrite, nonatomic, copy) AFRKURLConnectionOperationAuthenticationChallengeBlock authenticationChallenge;
@@ -297,12 +293,9 @@ static BOOL AFRKSecKeyIsEqualToKey(SecKeyRef key1, SecKeyRef key2) {
         _outputStream = nil;
     }
     
-#if defined(__IPHONE_OS_VERSION_MIN_REQUIRED)
-    if (_backgroundTaskIdentifier) {
-        [[UIApplication sharedApplication] endBackgroundTask:_backgroundTaskIdentifier];
-        _backgroundTaskIdentifier = UIBackgroundTaskInvalid;
+    if (_backgroundTaskCleanup) {
+        _backgroundTaskCleanup();
     }
-#endif
 }
 
 - (NSString *)description {
@@ -361,10 +354,18 @@ static BOOL AFRKSecKeyIsEqualToKey(SecKeyRef key1, SecKeyRef key2) {
 #if defined(__IPHONE_OS_VERSION_MIN_REQUIRED)
 - (void)setShouldExecuteAsBackgroundTaskWithExpirationHandler:(void (^)(void))handler {
     [self.lock lock];
-    if (!self.backgroundTaskIdentifier) {
+    if (!self.backgroundTaskCleanup) {
         UIApplication *application = [UIApplication sharedApplication];
+        UIBackgroundTaskIdentifier __block backgroundTaskIdentifier = UIBackgroundTaskInvalid;
         __weak __typeof(&*self)weakSelf = self;
-        self.backgroundTaskIdentifier = [application beginBackgroundTaskWithExpirationHandler:^{
+        self.backgroundTaskCleanup = ^(){
+            if (backgroundTaskIdentifier != UIBackgroundTaskInvalid) {
+                [[UIApplication sharedApplication] endBackgroundTask:backgroundTaskIdentifier];
+               backgroundTaskIdentifier = UIBackgroundTaskInvalid;
+            }
+        };
+        
+                backgroundTaskIdentifier = [application beginBackgroundTaskWithExpirationHandler:^{
             __strong __typeof(&*weakSelf)strongSelf = weakSelf;
             
             if (handler) {
@@ -374,8 +375,7 @@ static BOOL AFRKSecKeyIsEqualToKey(SecKeyRef key1, SecKeyRef key2) {
             if (strongSelf) {
                 [strongSelf cancel];
                 
-                [application endBackgroundTask:strongSelf.backgroundTaskIdentifier];
-                strongSelf.backgroundTaskIdentifier = UIBackgroundTaskInvalid;
+                strongSelf.backgroundTaskCleanup();
             }
         }];
     }
