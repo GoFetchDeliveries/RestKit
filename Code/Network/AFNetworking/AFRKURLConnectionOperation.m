@@ -53,7 +53,7 @@ typedef void (^AFRKURLConnectionOperationProgressBlock)(NSUInteger bytes, long l
 typedef void (^AFRKURLConnectionOperationAuthenticationChallengeBlock)(NSURLConnection *connection, NSURLAuthenticationChallenge *challenge);
 typedef NSCachedURLResponse * (^AFRKURLConnectionOperationCacheResponseBlock)(NSURLConnection *connection, NSCachedURLResponse *cachedResponse);
 typedef NSURLRequest * (^AFRKURLConnectionOperationRedirectResponseBlock)(NSURLConnection *connection, NSURLRequest *request, NSURLResponse *redirectResponse);
-typedef void (^AFURLConnectionOperationBackgroundTaskCleanupBlock)();
+typedef void (^AFRKURLConnectionOperationBackgroundTaskCleanupBlock)();
 
 static inline NSString * AFRKKeyPathFromOperationState(AFRKOperationState state) {
     switch (state) {
@@ -136,8 +136,7 @@ static BOOL AFRKSecKeyIsEqualToKey(SecKeyRef key1, SecKeyRef key2) {
 @property (readwrite, nonatomic, copy) NSString *responseString;
 @property (readwrite, nonatomic, assign) NSStringEncoding responseStringEncoding;
 @property (readwrite, nonatomic, assign) long long totalBytesRead;
-@property (readwrite, nonatomic, assign) AFRKBackgroundTaskIdentifier backgroundTaskIdentifier;
-@property (readwrite, nonatomic, copy) AFURLConnectionOperationBackgroundTaskCleanupBlock backgroundTaskCleanup;
+@property (readwrite, nonatomic, copy) AFRKURLConnectionOperationBackgroundTaskCleanupBlock backgroundTaskCleanup;
 @property (readwrite, nonatomic, copy) AFRKURLConnectionOperationProgressBlock uploadProgress;
 @property (readwrite, nonatomic, copy) AFRKURLConnectionOperationProgressBlock downloadProgress;
 @property (readwrite, nonatomic, copy) AFRKURLConnectionOperationAuthenticationChallengeBlock authenticationChallenge;
@@ -168,7 +167,6 @@ static BOOL AFRKSecKeyIsEqualToKey(SecKeyRef key1, SecKeyRef key2) {
 @synthesize SSLPinningMode = _SSLPinningMode;
 @synthesize shouldUseCredentialStorage = _shouldUseCredentialStorage;
 @synthesize userInfo = _userInfo;
-@synthesize backgroundTaskIdentifier = _backgroundTaskIdentifier;
 @synthesize uploadProgress = _uploadProgress;
 @synthesize downloadProgress = _downloadProgress;
 @synthesize authenticationChallenge = _authenticationChallenge;
@@ -365,7 +363,7 @@ static BOOL AFRKSecKeyIsEqualToKey(SecKeyRef key1, SecKeyRef key2) {
             }
         };
         
-                backgroundTaskIdentifier = [application beginBackgroundTaskWithExpirationHandler:^{
+            backgroundTaskIdentifier = [application beginBackgroundTaskWithExpirationHandler:^{
             __strong __typeof(&*weakSelf)strongSelf = weakSelf;
             
             if (handler) {
